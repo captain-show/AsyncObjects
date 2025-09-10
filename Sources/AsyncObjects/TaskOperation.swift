@@ -426,21 +426,20 @@ public struct TaskOperationFlags: OptionSet, Sendable {
         typealias LocalTask = Task<R, Error>
         typealias ThrowingAction = @Sendable () async throws -> R
         typealias TaskInitializer = (TaskPriority?, ThrowingAction) -> LocalTask
-
-        let initializer =
-            self.contains(.detached)
-            ? LocalTask.detached
-            : LocalTask.init
-        return initializer(priority) {
-            return self.contains(.trackUnstructuredTasks)
-                ? try await Tracker.$current.withValue(
-                    .init(onComplete: completion),
-                    operation: operation
-                )
+        
+        let operation = {
+            self.contains(.trackUnstructuredTasks)
+                ? try await Tracker.$current.withValue(.init(onComplete: completion), operation: operation)
                 : try await {
                     defer { completion() }
                     return try await operation()
                 }()
+        }
+
+        return if self.contains(.detached) {
+            LocalTask.detached(priority: priority, operation: operation)
+        } else {
+            LocalTask.init(priority: priority, operation: operation)
         }
     }
 
